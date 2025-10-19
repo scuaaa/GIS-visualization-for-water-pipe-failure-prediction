@@ -1,0 +1,7 @@
+Flask
+geopandas
+pandas
+shapely
+fiona 
+pyogrio
+gdal

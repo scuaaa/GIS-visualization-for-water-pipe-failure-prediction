@@ -1,0 +1,37 @@
+<button id="createShpBtn">Create Empty .shp File</button>
+
+<!-- Modal Popup -->
+<div id="shpModal" style="display:none; position:fixed; left:50%; top:50%; transform:translate(-50%, -50%); padding:20px; background-color:white; border:1px solid #ccc; z-index:1000;">
+    <h2>Create Shapefile</h2>
+    <p>Click the button below to generate an empty Shapefile.</p>
+    <button id="generateShp">Generate .shp</button>
+    <button id="closeModal">Close</button>
+</div>
+
+<script>
+// Open popup
+document.getElementById('createShpBtn').addEventListener('click', function() {
+    document.getElementById('shpModal').style.display = 'block';
+});
+
+// Close popup
+document.getElementById('closeModal').addEventListener('click', function() {
+    document.getElementById('shpModal').style.display = 'none';
+});
+
+// Generate .shp file on button click
+document.getElementById('generateShp').addEventListener('click', function() {
+    fetch('/create-empty-shp', {
+        method: 'POST'
+    })
+    .then(response => response.blob())
+    .then(blob => {
+        // Create a download link for the .shp file
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'empty_shapefile.shp';
+        link.click();
+    })
+    .catch(error => console.error('Error:', error));
+});
+</script>

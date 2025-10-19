@@ -1,0 +1,10 @@
+{
+    "risk_levels": {
+        "high": "data/shp/data_100.shp",
+        "medium": "data/shp/data_200.shp",
+        "low":"data/shp/data_400.shp"
+    },
+    "social_factor":"data/shp/economic_factor.shp",
+    "_social_factor":"data/shp/zip_44311.shp",
+    "_post_area":"data/shp/post_44311.shp"
+}

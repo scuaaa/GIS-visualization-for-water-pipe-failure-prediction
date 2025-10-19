@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Water Pipes Map</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='leaflet/leaflet.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='leaflet-search-master/dist/leaflet-search.min.css') }}" /> 
+
+    <style>
+        #map {
+            height: 100vh;
+        }
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        .customer_menu{
+            font-size: 20px;
+            font-weight: bold;
+        
+        }
+        .button{
+            z-index: 1000;
+        }
+        .menu {
+            position: fixed;
+            top: 20px;
+            right: 10px;
+            width: 250px;
+            height: 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            cursor: pointer;
+            z-index: 1000; /* Ensures the menu is on top */
+        }
+        .menu-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 0px; /* Add some space between the items */
+    }
+
+        .menu .line {
+            width: 50%;
+            height: 8px;
+        }
+
+        .menu .line:nth-child(1) {
+            background-color: blue;
+        }
+
+        .menu .line:nth-child(2) {
+            background-color: green;
+        }
+
+        .menu .line:nth-child(3) {
+            background-color: yellow;
+        }
+        .menu-text {
+            flex: 1;
+            font-weight: bold;
+            margin-right: 10px;
+            font-size: 30px;
+        }
+        .download-btn {
+            padding: 3px 5px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 10px; /* Smaller font size */
+            height: 20px; /* Set a specific height for uniformity */
+        }
+
+        .download-btn:hover {
+            background-color: #0056b3;
+        }
+
+        .leaflet-control-search {
+            z-index: 1000; /* Adjust this value to ensure it appears on top */
+            position: relative; /* Ensure it respects the z-index */
+            display: block; /* Make sure it's visible */
+        }
+
+        .leaflet-control-layers {
+            background-color: rgba(255,255,255);
+
+
+        }
+        .leaflet-control-toggle {
+
+            border: 1px solid #ccc;
+            cursor: pointer;
+            font-size: 20px;
+            color:"red"
+        }
+
+        .custom-label {
+            display: flex;
+            background: rgba(255,255,255,0.5) !important;  /* Remove the default background of the label */
+            border: none !important;      /* Remove the border */
+            font-size: 14px;              /* Adjust the font size */
+            color: black;                 /* Change the font color */
+            font-weight: bold;            /* Make the text bold */
+            text-shadow: 1px 1px 2px white; /* Add text shadow for better visibility */
+            padding: 2px;                 /* Adjust padding for better spacing */
+        }
+
+        .color1{
+            position: absolute; 
+            top: 250px; 
+            right:10px; 
+            z-index: 1000;
+            background-color: rgba(255,255,255,0.9);
+            border: 1px solid #ccc;
+            cursor: pointer;
+
+        }
+
+        .screen{
+            position: absolute; 
+            top: 250px; 
+            right:10px; 
+            z-index: 1000;
+            background-color: rgba(255,255,255,0.9);
+            border: 1px solid #ccc;
+            cursor: pointer;
+
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Input fields for file paths -->
+    <!-- <div id="filePaths"  style="position: absolute; top: 360px; right: 80px; z-index: 1000;">
+        <div class = "customer_menu" >Customer load </div>
+        <textarea type="comments" id="shpPath" cols="20" rows="5" placeholder="Enter .shp file path" ></textarea>
+        <br>
+        <button id="loadBtn1">Load and Reproject</button>
+        <button id="clearBtn">Clear</button>
+        <br>
+        <button id="createShpBtn">Create Empty .shp File</button>
+        <br>
+
+    </div> -->
+    <div id="filePaths"  style="position: absolute; top: 350px; right: 165px; z-index: 1000;">
+    <!-- <button id="screen_shot",class="screen" onclick="takeScreenshot()">Screenshot</button> -->
+    <button id="screenshot-btn">Screenshot</button>
+
+    </div>
+
+    <script>
+    document.getElementById('screenshot-btn').addEventListener('click', function () {
+        leafletImage(map, function(err, canvas) {
+            if (err) {
+                console.error("截图失败：", err);
+                return;
+            }
+
+            // 将 canvas 转换成图片 URL
+            var imgData = canvas.toDataURL("image/png");
+
+            // 创建一个下载链接
+            var a = document.createElement("a");
+            a.href = imgData;
+            a.download = "map-screenshot.png";
+            a.click();
+        });
+    });
+
+    // Generate .shp file on button click
+    document.getElementById('createShpBtn').addEventListener('click', function() {
+        fetch('/api/create-empty-shp', {
+            method: 'POST'
+        })
+        .then(response => response.blob())
+        .then(blob => {
+            // Create a download link for the .shp file
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'empty_shapefile.zip';
+            link.click();
+        })
+        .catch(error => console.error('Error:', error));
+    });
+
+
+
+    </script>
+
+
+
+
+    <div id="map"></div>
+    <script src="{{ url_for('static', filename='leaflet/leaflet.js') }}"></script>
+    <script src="{{ url_for('static', filename='leaflet-search-master/dist/leaflet-search.min.js') }}"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
+
+    <script>
+        // Initialize the map
+        const map = L.map('map').setView([0, 0], 2); // Initial view, will be adjusted
+        // Add OpenStreetMap tile layer
+        //L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        //    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        //}).addTo(map);
+
+        // Add the MOBAC tile layer
+        L.tileLayer('/static/map/akron/{z}/{x}/{y}.png', {  // Update with your actual path or server URL
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 16,
+            minZoom: 2,
+            tileSize: 256,
+            zoomOffset: 0
+        }).addTo(map);
+        // Function to add a GeoJSON layer with a specific color and mouseover event
+        function addGeoJsonLayer(url, color) {
+            return fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok ' + response.statusText);
+                    }
+                    return response.json()           
+                })
+  
+                .then(data => {
+                    const geojsonLayer = L.geoJSON(data, {
+                        style: {
+                            weight: 5,
+                            color: color,
+                            dashArray: '',
+                            fillOpacity: 0.1
+                        },
+                        onEachFeature: function (feature, layer) {
+                            layer.on('mouseover', function (e) {
+                                const popupContent = `
+                                <div>
+                                    <strong>Pipe Asset:</strong> ${feature.properties.ASSET_ID || 'N/A'}<br>
+                                    <strong>Install Year:</strong> ${feature.properties.INSTALLY_1 || 'N/A'}<br>
+                                    <strong>OWNER:</strong> ${feature.properties.OWNER || 'N/A'}
+                                </div>
+                                `;
+                                const popup = L.popup()
+                                    .setLatLng(e.latlng)
+                                    .setContent(popupContent)
+                                    .openOn(map);
+
+                                // Highlight the pipe
+                                layer.setStyle({
+                                    weight: 10,
+                                    color: color,
+                                    dashArray: '',
+                                    fillOpacity: 0.7
+                                });
+                            });
+
+
+                            layer.on('mouseout', function () {
+                                map.closePopup();
+
+                                // Reset the highlight
+                                layer.setStyle({
+                                    weight: 5,
+                                    color: color,
+                                    dashArray: '',
+                                    fillOpacity: 0.1
+                                });
+                            });
+                        }
+                    });
+                    return geojsonLayer;
+
+                });
+        }
+
+
+        let glayer1 = L.geoJSON(null) 
+        let glayer2 = L.geoJSON(null)
+        let glayer3 = L.geoJSON(null)
+        let allGeoJsonLayers = L.geoJSON(null)
+  
+
+        // Function to handle the "High" button click
+        function handleHighClick(targetId, glayer, layer_group) {
+            const { foundLayer, parentLayer } = findLayerContainingId(layer_group, targetId);
+            if (foundLayer && parentLayer) {
+                if (parentLayer === glayer) {
+                    alert("The sub-layer is already in layer.");
+                } else {
+                    // Remove the sub-layer from its current layer
+                    if ([glayer1,glayer2,glayer3].includes(parentLayer))  parentLayer.removeLayer(foundLayer);
+
+                    // Add the sub-layer to layer1
+                    // Get the feature object from the sub-layer
+                    const feature = foundLayer.toGeoJSON();
+
+                    // Re-create the sub-layer with new options
+                    const updatedLayer = L.geoJSON(feature, {
+                        style: glayer.options.style, // Apply the new style
+                        onEachFeature: glayer.options.onEachFeature // Apply the new onEachFeature behavior
+                    });
+
+                    updatedLayer.eachLayer(function(layer) {
+                        glayer.addLayer(layer);
+                    });
+
+                    refreshAllGeoJsonLayers([glayer1,glayer2,glayer3], allGeoJsonLayers);
+                    alert("Sub-layer moved to layer.");
+                    document.getElementById('high_risk_number').textContent = glayer1.toGeoJSON().features.length;
+                    document.getElementById('medium_risk_number').textContent = glayer2.toGeoJSON().features.length;
+                    document.getElementById('risk_number').textContent = glayer3.toGeoJSON().features.length;
+                }
+            } else {
+                alert("Layer with the specified ID not found.");
+            }
+        }
+
+
+        // Function to refresh allGeoJsonLayers after moving a sub-layer
+        function refreshAllGeoJsonLayers(layers, allGeoJsonLayers) {
+            // Clear allGeoJsonLayers
+            allGeoJsonLayers.clearLayers();
+
+            // Re-add all sub-layers from the updated layers
+            layers.forEach(layer => {
+                layer.eachLayer(function(subLayer) {
+                    allGeoJsonLayers.addLayer(subLayer);
+                });
+            });
+
+            if (map.hasLayer(allGeoJsonLayers)) {
+                map.removeLayer(allGeoJsonLayers);
+            }
+
+            // Add the updated allGeoJsonLayers back to the map
+            map.addLayer(allGeoJsonLayers);
+        }
+
+        function findLayerContainingId(layers, targetId) {
+            let foundLayer = null;
+            let parentLayer = null;
+
+            layers.forEach((layer) => {
+                layer.eachLayer(function(subLayer) {
+                    // Check if the sub-layer has the target 'id'
+                    if (subLayer.feature && subLayer.feature.properties && subLayer.feature.properties.ASSET_ID === targetId) {
+                        foundLayer = subLayer;
+                        parentLayer = layer;
+                    }
+                });
+            });
+            return { foundLayer, parentLayer };
+        }
+
+        // Function to handle the "High" button click
+        function handleClear(targetId) {
+            const { foundLayer, parentLayer } = findLayerContainingId([glayer1,glayer2,glayer3], targetId);
+
+            if (foundLayer && parentLayer) {
+                    // Remove the sub-layer from its current layer
+                    parentLayer.removeLayer(foundLayer);
+                    refreshAllGeoJsonLayers([glayer1,glayer2,glayer3], allGeoJsonLayers);
+                    alert("Sub-layer removed.");
+                    document.getElementById('high_risk_number').textContent = glayer1.toGeoJSON().features.length;
+                    document.getElementById('medium_risk_number').textContent = glayer2.toGeoJSON().features.length;
+                    document.getElementById('risk_number').textContent = glayer3.toGeoJSON().features.length;
+                
+            } else {
+                alert("Layer with the specified ID not found.");
+            }
+        }
+
+        // Fetch and add all GeoJSON layers
+        Promise.all([
+            addGeoJsonLayer('/api/pipes1', 'blue'),
+            addGeoJsonLayer('/api/pipes2', 'green'),
+            addGeoJsonLayer('/api/pipes3', 'yellow')
+        ]).then(layers => {
+            // Combine all GeoJSON layers into one
+            [glayer1,glayer2,glayer3] = layers;
+            allGeoJsonLayers = L.geoJSON(null);
+
+            layers.forEach(layer => {
+                layer.eachLayer(l => {
+                    allGeoJsonLayers.addLayer(l);
+                });
+            });
+
+            allGeoJsonLayers.addTo(map);
+
+            // Center the map on Akron
+            map.setView([41.0814, -81.5190], 13);
+            if (glayer1 instanceof L.GeoJSON) {
+                console.log("This is a GeoJSON layer");
+
+            } else {
+                console.log("This is not a GeoJSON layer");
+            }
+
+            // Add the search control
+            const searchControl = new L.Control.Search({
+                layer: allGeoJsonLayers,
+                propertyName: 'ASSET_ID', // This should match the property name in your GeoJSON
+                marker: false, // If you want to use a marker to highlight the result
+                moveToLocation: function(latlng, title, map) {
+                    map.setView(latlng, 17); // Zoom in on the found feature
+                }
+            });
+            
+            searchControl.on('search:locationfound', function(e) {
+                // Optionally, highlight the found feature
+                e.layer.setStyle({
+                    color: 'black',
+                    weight: 10
+                });
+
+                const latlng = e.latlng;
+                const targetId = e.layer.feature.properties.ASSET_ID; 
+                const popupContent = `
+                    <div id="popup-container">
+                        <button id="high"><strong>high</strong></button>
+                        <button id="medium"><strong>medium</strong></button>
+                        <button id="low"><strong>low</strong></button>
+                        <button id="clear_pipe"><strong>clear</strong></button>
+                    </div>
+                `;
+
+                const popup = L.popup({
+                    autoClose: false,
+                    closeOnClick: true
+                })
+                .setLatLng(latlng)
+                .setContent(popupContent)
+                .openOn(map);
+
+
+                setTimeout(() => {
+                    document.getElementById('high').addEventListener('click', function() {
+                        handleHighClick(targetId,glayer1,[glayer1,glayer2,glayer3]);  // Call function to move sub-layer if needed
+                    });
+
+                    document.getElementById('medium').addEventListener('click', function() {
+                        handleHighClick(targetId,glayer2,[glayer1,glayer2,glayer3]);
+                    });
+
+                    document.getElementById('low').addEventListener('click', function() {
+                        handleHighClick(targetId,glayer3,[glayer1,glayer2,glayer3]);
+                    });
+                    document.getElementById('clear_pipe').addEventListener('click', function() {
+                        handleClear(targetId);
+                    });
+                }, 0);
+
+                // Reset style after a few seconds
+                setTimeout(function() {
+                    allGeoJsonLayers.resetStyle(e.layer);
+                }, 2000);
+            });
+
+            map.addControl(searchControl); // Add the search control to the map
+            document.getElementById('high_risk_number').textContent = glayer1.toGeoJSON().features.length;
+            document.getElementById('medium_risk_number').textContent = glayer2.toGeoJSON().features.length;
+            document.getElementById('risk_number').textContent = glayer3.toGeoJSON().features.length;
+
+
+
+            var isMaskVisible = true;
+            document.getElementById('toggleMaskBtn_2').addEventListener('click', function () {
+                if (isMaskVisible) {
+                    // Remove the mask from the map
+                    map.removeLayer(allGeoJsonLayers);
+                    searchControl.remove();
+                    document.getElementById('toggleMaskBtn_2').textContent = "risk pipes off"
+                } else {
+                    // Add the mask back to the map
+                    allGeoJsonLayers.addTo(map);
+                    map.addControl(searchControl); 
+                    document.getElementById('toggleMaskBtn_2').textContent = "risk pipes on"
+                }
+                // Toggle the visibility state
+                isMaskVisible = !isMaskVisible;
+            });
+        }).catch(error => {
+            console.error('Error loading layers:', error);
+        });
+
+
+        // download file as csv
+        function downloadCSV(riskType) {
+            const formData = new FormData();
+            formData.append('risk_type', riskType);
+
+            fetch('/download_csv', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(errorData => {
+                        throw new Error(errorData.error || 'Failed to download file');
+                    });
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `${riskType}_risk.csv`;
+                link.click();
+            })
+            .catch(error => {
+                alert(error.message);
+            });
+
+        }
+
+        function save_file(riskType) {
+            const formData = new FormData();
+            formData.append('risk_type', riskType);
+
+            let file = null;
+            if (riskType == "high") {file = glayer1.toGeoJSON()}
+            else if (riskType == "medium") {file = glayer2.toGeoJSON()}
+            else if (riskType == "low") {file = glayer3.toGeoJSON()}
+            else {const file = null};
+            console.log(file.features.length)
+            const geojsonString = JSON.stringify(file);
+            formData.append('file', new Blob([geojsonString], { type: 'application/json' }), 'data.geojson');
+
+            fetch('/api/save_file', {
+                method: 'POST',
+                body: formData
+                }).then(response => response.json())
+                .then(data => {
+                    console.log('Response from server:', data);
+                    alert("save successful.")
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+            }
+    
+    fetch("api/social_factor")
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok ' + response.statusText);
+            }
+            return response.json()           
+        })
+
+        .then(data => {
+            function onEachFeature (feature, layer) {
+                // Check if feature has properties, then display the data
+                if (feature.properties) {
+                    // Create content based on your data, for example, social factor
+                    var labelContent = `
+                        <div>
+                            <strong style="color:red"> ${(feature.properties['Below 100%']*100).toFixed(2)}% </strong><br>
+                            <strong style="color:black">${(feature.properties.Population*100).toFixed(2)}%</strong><br>
+                            <strong style="color:green">${(feature.properties.Unemployme*100).toFixed(2)}%</strong> <br>
+                            <strong style="color:purple"> ${(feature.properties["African Am"]*100).toFixed(2)}%</strong><br>
+                            <strong style="color:blue"> ${(feature.properties["White Popu"]*100).toFixed(2)}%</strong><br>
+                        </div>
+                    `;
+                    
+                    // Bind the tooltip to the layer and keep it permanently visible
+                    layer.bindTooltip(labelContent, {
+                        permanent: true,     // Keep the label visible at all times
+                        direction: 'center', // Center the text over the polygon
+                        className: 'custom-label' // Custom CSS class for styling
+                    }).openTooltip();
+
+                    layer.on('mouseover', function (e) {
+                        layer.setStyle({
+                            color: "black",     // Border color
+                            weight: 2,            // Border width
+                            fillColor: "#ff7800", // Fill color (mask color)
+                            fillOpacity: .5     // Opacity (0 = fully transparent, 1 = fully opaque)
+                        })
+                    })
+
+                    layer.on('mouseout', function () {
+                        // Reset the highlight
+                        layer.setStyle({
+                            color: "black",     // Border color
+                            weight: 2,            // Border width
+                            fillColor: "#ff7800", // Fill color (mask color)
+                            fillOpacity: 0.2     // Opacity (0 = fully transparent, 1 = fully opaque)
+                        });
+                    });
+                        
+                
+                }
+            }
+            const socoail_jsonLayer = L.geoJSON(data, {
+                style: {
+                    color: "black",     // Border color
+                    weight: 2,            // Border width
+                    fillColor: "#ff7800", // Fill color (mask color)
+                    fillOpacity: 0.2     // Opacity (0 = fully transparent, 1 = fully opaque)
+                    },
+                onEachFeature: onEachFeature
+                });
+
+
+            
+
+            var isMaskVisible = false;
+            document.getElementById('toggleMaskBtn').addEventListener('click', function () {
+                if (isMaskVisible) {
+                    // Remove the mask from the map
+                    map.removeLayer(socoail_jsonLayer);
+                    document.getElementById('toggleMaskBtn').textContent = "social factor off"
+                } else {
+                    // Add the mask back to the map
+                    socoail_jsonLayer.addTo(map);
+                    document.getElementById('toggleMaskBtn').textContent = "social factor on"
+                }
+                // Toggle the visibility state
+                isMaskVisible = !isMaskVisible;
+            });
+        });
+
+    
+
+        // Add an event listener to the toggle button
+
+    // Define the style for the polygon (mask)
+
+    fetch("api/post_area")
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok ' + response.statusText);
+            }
+            return response.json()           
+        })
+
+        .then(data => {
+            function onEachFeature (feature, layer) {
+                // Check if feature has properties, then display the data
+                if (feature.properties) {
+                    // Create content based on your data, for example, social factor
+                    var labelContent = `
+                        <div>
+                            44311
+                        </div>
+                    `;
+                    
+                    // Bind the tooltip to the layer and keep it permanently visible
+                    layer.bindTooltip(labelContent, {
+                        permanent: true,     // Keep the label visible at all times
+                        direction: 'center', // Center the text over the polygon
+                        className: 'custom-label' // Custom CSS class for styling
+                    }).openTooltip();
+                        
+                }
+            }
+            const socoail_jsonLayer = L.geoJSON(data, {
+                style: {
+                    color: "black",     // Border color
+                    weight: 2,            // Border width
+                    fillColor: "blue", // Fill color (mask color)
+                    fillOpacity: 0.1     // Opacity (0 = fully transparent, 1 = fully opaque)
+                    },
+                onEachFeature: onEachFeature
+                });
+
+            socoail_jsonLayer.addTo(map)
+            });
+        
+
+    var shapefileLayers = [];
+    var searchControl_list =[];
+    document.getElementById('loadBtn1').addEventListener('click', function() {
+        var shpPath = document.getElementById('shpPath').value;
+        console.log("click upload")
+        if (!shpPath) {
+            alert("Please provide file paths for .shp, .dbf, and .prj files.");
+            return;
+        }
+
+        // Send file paths to the backend
+        fetch('api/load_shapefile', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                shp_path: shpPath,
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert("Error: " + data.error);
+            } else {
+                const geojsonLayer = L.geoJSON(data, {
+                        style: {
+                            weight: 5,
+                            color: "purple",
+                            dashArray: '',
+                            fillOpacity: 0.1
+                        },
+                        onEachFeature: function (feature, layer) {
+                            layer.on('mouseover', function (e) {
+                                const popupContent = `
+                                <div>
+                                    <strong>Pipe Asset:</strong> ${feature.properties.ASSET_ID || 'N/A'}<br>
+                                    <strong>Install Year:</strong> ${feature.properties.INSTALLY_1 || 'N/A'}<br>
+                                    <strong>OWNER:</strong> ${feature.properties.OWNER || 'N/A'}
+                                </div>
+                                `;
+                                const popup = L.popup()
+                                    .setLatLng(e.latlng)
+                                    .setContent(popupContent)
+                                    .openOn(map);
+
+                                // Highlight the pipe
+                                layer.setStyle({
+                                    weight: 10,
+                                    color: "purple",
+                                    dashArray: '',
+                                    fillOpacity: 0.7
+                                });
+                            });
+
+                            layer.on('mouseout', function () {
+                                map.closePopup();
+
+                                // Reset the highlight
+                                layer.setStyle({
+                                    weight: 5,
+                                    color: "purple",
+                                    dashArray: '',
+                                    fillOpacity: 0.1
+                                });
+                            });
+                        }
+                    });
+                    const searchControl = new L.Control.Search({
+                        layer: geojsonLayer,
+                        propertyName: 'ASSET_ID', // This should match the property name in your GeoJSON
+                        marker: false, // If you want to use a marker to highlight the result
+                        moveToLocation: function(latlng, title, map) {
+                            map.setView(latlng, 17); // Zoom in on the found feature
+                        }
+                    });
+                    
+                    searchControl.on('search:locationfound', function(e) {
+                        // Optionally, highlight the found feature
+                        e.layer.setStyle({
+                            color: '#ff7800',
+                            weight: 10
+                        });
+
+                        const latlng = e.latlng;
+                        const targetId = e.layer.feature.properties.ASSET_ID; 
+                        const popupContent = `
+                            <div id="popup-container">
+                                <button id="high"><strong>high</strong></button>
+                                <button id="medium"><strong>medium</strong></button>
+                                <button id="low"><strong>low</strong></button>
+                            </div>
+                        `;
+
+                        const popup = L.popup({
+                            autoClose: false,
+                            closeOnClick: true
+                        })
+                        .setLatLng(latlng)
+                        .setContent(popupContent)
+                        .openOn(map);
+
+
+                        setTimeout(() => {
+                            document.getElementById('high').addEventListener('click', function() {
+                                handleHighClick(targetId,glayer1,shapefileLayers);  // Call function to move sub-layer if needed
+                            });
+
+                            document.getElementById('medium').addEventListener('click', function() {
+                                handleHighClick(targetId,glayer2,shapefileLayers);
+                            });
+
+                            document.getElementById('low').addEventListener('click', function() {
+                                handleHighClick(targetId,glayer3,shapefileLayers);
+                            });
+                        }, 0);
+
+                        // Reset style after a few seconds
+                        setTimeout(function() {
+                            allGeoJsonLayers.resetStyle(e.layer);
+                        }, 2000);
+                    });
+
+                    map.addControl(searchControl); // Add the search control to the map
+                    geojsonLayer.addTo(map);
+                    shapefileLayers.push(geojsonLayer);
+                    searchControl_list.push(searchControl);
+
+
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+    });
+    // Add event listener to the "Clear Last Shapefile" button
+    document.getElementById('clearBtn').addEventListener('click', function() {
+        // Remove the last added shapefile layer if the list is not empty
+        if (shapefileLayers.length > 0) {
+            var lastLayer = shapefileLayers.pop();
+            map.removeLayer(lastLayer);
+            searchControl_list.pop().remove()
+            // Update the layer list display
+
+        } else {
+            alert("No more shapefile layers to remove.");
+        }
+    });
+    
+    function takeScreenshot() { 
+        html2canvas(document.body,{scale: 5 }).then(canvas => {
+            let link = document.createElement('a');
+            link.download = 'screenshot.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        });
+    };
+
+
+    </script>
+
+        
+<div class="menu">
+    <div class="menu-item">
+        <div class="line" style="background-color: blue;"></div>
+        <span> &nbsp;&nbsp;&nbsp; </span>
+        <button class="download-btn" onclick="downloadCSV('high')">Download</button>
+        <button class="download-btn" onclick="save_file('high')">Save</button>
+
+    </div>
+    <span class="menu-text"><b>high risk: <span id="high_risk_number"></span> </b></span>
+    <div class="menu-item">
+        <div class="line" style="background-color: green;"></div>
+        <span> &nbsp;&nbsp;&nbsp; </span>
+        <button class="download-btn" onclick="downloadCSV('medium')">Download</button>
+        <button class="download-btn" onclick="save_file('medium')">Save</button>
+    </div>
+    <span class="menu-text"><b>medium risk: <span id="medium_risk_number"></span></b></span>
+    <div class="menu-item">
+        <div class="line" style="background-color: yellow;"></div>
+        <span> &nbsp;&nbsp;&nbsp; </span>
+        <button class="download-btn" onclick="downloadCSV('low')">Download</button>
+        <button class="download-btn" onclick="save_file('low')">Save</button>
+    </div>
+    <span class="menu-text"><b>low risk: <span id="risk_number"></span></b></span>
+</div>
+
+<div id="toggleMaskBtn" class="leaflet-control-layers leaflet-control-toggle" 
+    style="position: absolute; top: 220px; right: 120px; z-index: 1000;">
+    social factor off
+</div>
+
+<div id="toggleMaskBtn_2" class="leaflet-control-layers leaflet-control-toggle" 
+    style="position: absolute; top: 190px; right: 140px; z-index: 1000;">
+    risk pipes on
+</div>
+
+<div class = "color1">
+    <div style="color:red">
+        <strong>below 100% Poverty Population</strong> </div>
+    <div style="color:black">
+        Population Without Health Insurance </div>
+    <div style="color:green">
+        Unemployment </div>
+    <div style="color:purple">
+        African American </div>
+    <div style="color:blue">
+        White Population </div>
+</div>
+
+
+
+
+
+</body>
+</html>
